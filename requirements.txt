@@ -1,6 +1,6 @@
-streamlit==1.28.1
-pandas==1.5.3
-openpyxl==3.1.2
-reportlab==4.0.4
-plotly==5.17.0
-pillow==9.5.0
+streamlit
+pandas
+openpyxl
+reportlab
+plotly
+pillow
