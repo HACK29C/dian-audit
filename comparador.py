@@ -55,9 +55,13 @@ class ComparadorArchivos:
         df_solo_a = self.df_a[self.df_a[self.columna_clave].isin(solo_a)]
         df_solo_b = self.df_b[self.df_b[self.columna_clave].isin(solo_b)]
         
-        # Diccionarios para búsqueda rápida
-        dict_a = self.df_a.set_index(self.columna_clave).to_dict('index')
-        dict_b = self.df_b.set_index(self.columna_clave).to_dict('index')
+        # Para registros comunes, tomar el PRIMER registro de cada clave (en caso de duplicados)
+        df_comunes_a = self.df_a[self.df_a[self.columna_clave].isin(comunes)].drop_duplicates(subset=[self.columna_clave], keep='first')
+        df_comunes_b = self.df_b[self.df_b[self.columna_clave].isin(comunes)].drop_duplicates(subset=[self.columna_clave], keep='first')
+        
+        # Crear diccionarios (ahora con índices únicos)
+        dict_a = df_comunes_a.set_index(self.columna_clave).to_dict('index')
+        dict_b = df_comunes_b.set_index(self.columna_clave).to_dict('index')
         
         # Detectar diferencias
         diferencias = []
@@ -82,16 +86,23 @@ class ComparadorArchivos:
                 
                 if val_a != val_b:
                     es_igual = False
-                    diferencias_encontradas[col] = {"A": val_a if val_a else "(vacio)", "B": val_b if val_b else "(vacio)"}
+                    diferencias_encontradas[col] = {
+                        "A": val_a if val_a else "(vacio)", 
+                        "B": val_b if val_b else "(vacio)"
+                    }
             
             if es_igual:
                 coincidencias.append(clave)
             else:
+                # Obtener filas completas originales
+                fila_a_original = self.df_a[self.df_a[self.columna_clave] == clave].iloc[0].to_dict() if len(self.df_a[self.df_a[self.columna_clave] == clave]) > 0 else {}
+                fila_b_original = self.df_b[self.df_b[self.columna_clave] == clave].iloc[0].to_dict() if len(self.df_b[self.df_b[self.columna_clave] == clave]) > 0 else {}
+                
                 diferencias.append({
                     "clave": clave,
                     "diferencias": diferencias_encontradas,
-                    "fila_a": row_a,
-                    "fila_b": row_b
+                    "fila_a": fila_a_original,
+                    "fila_b": fila_b_original
                 })
         
         # Detectar duplicados
