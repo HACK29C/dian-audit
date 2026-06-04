@@ -1,7 +1,7 @@
-"streamlit" 
-"pandas" 
-"openpyxl" 
-"reportlab" 
-"plotly" 
-"pillow" 
-"qrcode[pil]" 
+streamlit
+pandas
+openpyxl
+reportlab
+plotly
+pillow
+qrcode
