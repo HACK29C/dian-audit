@@ -87,7 +87,7 @@ class CertificadorAuditoria:
         
         # URL de verificacion
         # Para pruebas locales:
-        base_url = "http://localhost:8501"
+        base_url = "https://audit-verifica.streamlit.app"
         # Para produccion en Streamlit Cloud (descomentar cuando esté desplegado):
         # base_url = "https://hack29c-dian-audit.streamlit.app"
         
