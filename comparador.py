@@ -21,6 +21,17 @@ class ComparadorArchivos:
             if self.ignorar_mayusculas:
                 df[self.columna_clave] = df[self.columna_clave].str.upper()
     
+    def _normalizar_valor(self, valor):
+        """Normaliza un valor para comparación (maneja nulos correctamente)"""
+        if pd.isna(valor):
+            return ""
+        valor_str = str(valor)
+        if self.ignorar_espacios:
+            valor_str = valor_str.strip()
+        if self.ignorar_mayusculas:
+            valor_str = valor_str.upper()
+        return valor_str
+    
     def _detectar_duplicados(self, df, nombre):
         """Detecta registros duplicados por columna clave"""
         duplicados = df[df.duplicated(subset=[self.columna_clave], keep=False)]
@@ -44,32 +55,34 @@ class ComparadorArchivos:
         df_solo_a = self.df_a[self.df_a[self.columna_clave].isin(solo_a)]
         df_solo_b = self.df_b[self.df_b[self.columna_clave].isin(solo_b)]
         
-        # Comparación de registros comunes
-        df_comunes_a = self.df_a[self.df_a[self.columna_clave].isin(comunes)].set_index(self.columna_clave).sort_index()
-        df_comunes_b = self.df_b[self.df_b[self.columna_clave].isin(comunes)].set_index(self.columna_clave).sort_index()
+        # Diccionarios para búsqueda rápida
+        dict_a = self.df_a.set_index(self.columna_clave).to_dict('index')
+        dict_b = self.df_b.set_index(self.columna_clave).to_dict('index')
         
         # Detectar diferencias
         diferencias = []
         coincidencias = []
         
+        # Obtener todas las columnas excepto la clave
+        columnas_a = [c for c in self.df_a.columns if c != self.columna_clave]
+        columnas_b = [c for c in self.df_b.columns if c != self.columna_clave]
+        columnas_comunes = list(set(columnas_a) & set(columnas_b))
+        
         for clave in comunes:
-            row_a = df_comunes_a.loc[clave]
-            row_b = df_comunes_b.loc[clave]
-            
-            # Comparar todas las columnas excepto la clave
-            columnas_a = [c for c in df_comunes_a.columns if c != self.columna_clave]
+            row_a = dict_a.get(clave, {})
+            row_b = dict_b.get(clave, {})
             
             diferencias_encontradas = {}
             es_igual = True
             
-            for col in columnas_a:
-                if col in df_comunes_b.columns:
-                    val_a = str(row_a[col]) if pd.notna(row_a[col]) else ""
-                    val_b = str(row_b[col]) if pd.notna(row_b[col]) else ""
-                    
-                    if val_a != val_b:
-                        es_igual = False
-                        diferencias_encontradas[col] = {"A": val_a, "B": val_b}
+            for col in columnas_comunes:
+                # Obtener valores normalizados
+                val_a = self._normalizar_valor(row_a.get(col))
+                val_b = self._normalizar_valor(row_b.get(col))
+                
+                if val_a != val_b:
+                    es_igual = False
+                    diferencias_encontradas[col] = {"A": val_a if val_a else "(vacio)", "B": val_b if val_b else "(vacio)"}
             
             if es_igual:
                 coincidencias.append(clave)
@@ -77,8 +90,8 @@ class ComparadorArchivos:
                 diferencias.append({
                     "clave": clave,
                     "diferencias": diferencias_encontradas,
-                    "fila_a": row_a.to_dict(),
-                    "fila_b": row_b.to_dict()
+                    "fila_a": row_a,
+                    "fila_b": row_b
                 })
         
         # Detectar duplicados
@@ -87,15 +100,20 @@ class ComparadorArchivos:
         
         # Métricas
         total_claves = len(claves_a | claves_b)
+        coincidencias_count = len(coincidencias)
+        diferencias_count = len(diferencias)
+        
+        concordancia = (coincidencias_count / total_claves * 100) if total_claves > 0 else 0
+        
         metricas = {
             "total_claves": total_claves,
-            "coincidencias": len(coincidencias),
-            "diferencias": len(diferencias),
+            "coincidencias": coincidencias_count,
+            "diferencias": diferencias_count,
             "solo_a": len(solo_a),
             "solo_b": len(solo_b),
             "duplicados_a": len(duplicados_a),
             "duplicados_b": len(duplicados_b),
-            "concordancia": (len(coincidencias) / total_claves * 100) if total_claves > 0 else 0
+            "concordancia": concordancia
         }
         
         return {
@@ -106,7 +124,7 @@ class ComparadorArchivos:
             "df_solo_b": df_solo_b,
             "duplicados_a": duplicados_a,
             "duplicados_b": duplicados_b,
-            "df_comunes": df_comunes_a
+            "df_comunes": None
         }
     
     def obtener_df_diferencias_detallado(self, resultado):
@@ -120,8 +138,8 @@ class ComparadorArchivos:
                 registros.append({
                     "Clave": diff["clave"],
                     "Columna": col,
-                    "Valor Archivo A": vals["A"],
-                    "Valor Archivo B": vals["B"],
+                    "Valor Archivo Principal": vals["A"],
+                    "Valor Archivo Verificacion": vals["B"],
                     "Estado": "Diferente"
                 })
         return pd.DataFrame(registros)
