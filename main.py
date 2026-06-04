@@ -6,6 +6,7 @@ import tempfile
 import os
 from comparador import ComparadorArchivos
 from exportador import ExportadorAuditoria
+from certificador import CertificadorAuditoria
 
 # Configuracion de pagina
 st.set_page_config(
@@ -148,6 +149,26 @@ st.markdown("""
         margin: 0.2rem 0;
     }
     
+    .qr-container {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin: 1rem 0;
+    }
+    
+    .certificado-box {
+        background: #F8F9FA;
+        padding: 1rem;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 0.8rem;
+        border: 1px solid #DEE2E6;
+        margin: 1rem 0;
+        white-space: pre-wrap;
+    }
+    
     .footer {
         text-align: center;
         padding: 2rem;
@@ -201,7 +222,7 @@ st.markdown("""
 st.markdown("""
 <div class="dian-subheader">
     <strong>Que hace esta herramienta?</strong><br>
-    ElSistema de Auditoría de Datos permite comparar dos archivos de datos (Excel o CSV) para identificar discrepancias, 
+    El Sistema de Auditoría de Datos permite comparar dos archivos de datos (Excel o CSV) para identificar discrepancias, 
     registros faltantes y duplicados. Es ideal para procesos de fiscalizacion, control de inventarios, 
     verificacion de declaraciones y auditoria de datos. Seleccione una columna clave (como ID, NIT o Factura) 
     y el sistema analizara automaticamente las diferencias.
@@ -456,17 +477,17 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
         </div>
         """, unsafe_allow_html=True)
     
-    # Explicacion 0%
-    if concordancia == 0:
+    # Explicacion cuando concordancia es baja
+    if concordancia < 50:
         st.info("""
-        **Por que la concordancia es 0%?**
+        **Por que la concordancia es baja?**
         
-        La concordancia del 0% significa que ninguno de los registros comparados es completamente identico en todas sus columnas.
-        En este caso, todos los registros existen en ambos archivos, pero tienen diferencias en la columna 'Cantidad'.
+        La concordancia mide el porcentaje de registros que son **identicos en todas sus columnas**.
+        Una concordancia baja significa que la mayoria de los registros tienen diferencias en uno o mas campos.
         
-        - No significa que los archivos sean completamente diferentes
-        - Significa que no hay coincidencias exactas registro por registro
         - Revise las diferencias especificas en la pestaña 'Discrepancias'
+        - Los registros pueden existir en ambos archivos pero tener valores distintos
+        - Esto no significa que los archivos sean completamente diferentes
         """)
     
     # Analisis estructural
@@ -569,8 +590,8 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
                     st.markdown("**Diferencias encontradas:**")
                     for col, vals in diff["diferencias"].items():
                         try:
-                            val_a = float(vals["A"]) if vals["A"] else 0
-                            val_b = float(vals["B"]) if vals["B"] else 0
+                            val_a = float(vals["A"]) if vals["A"] and vals["A"] != "(vacio)" else 0
+                            val_b = float(vals["B"]) if vals["B"] and vals["B"] != "(vacio)" else 0
                             if val_a > 0:
                                 diff_pct = ((val_b - val_a) / val_a) * 100
                                 st.markdown(f"- **{col}**: `{vals['A']}` → `{vals['B']}` (diferencia de {diff_pct:+.1f}%)")
@@ -610,9 +631,90 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
             else:
                 st.success("No se detectaron duplicados.")
     
-    # Exportacion
+    # ==================== CERTIFICACION DIGITAL Y QR ====================
     st.markdown("---")
-    st.markdown("### Exportar Resultados")
+    st.markdown("## Certificacion Digital y Verificacion")
+    st.markdown("Genere un certificado digital unico con codigo QR para autenticar los resultados de esta auditoria.")
+    
+    col_cert1, col_cert2 = st.columns(2)
+    
+    with col_cert1:
+        if st.button("Generar Certificado Digital con QR", width='stretch'):
+            with st.spinner("Generando certificado digital..."):
+                try:
+                    # Crear certificador
+                    certificador = CertificadorAuditoria(
+                        resultado,
+                        st.session_state.archivo_principal_nombre,
+                        st.session_state.archivo_verificacion_nombre,
+                        st.session_state.columna_clave_actual
+                    )
+                    
+                    # Generar QR
+                    qr_buffer = certificador.generar_qr()
+                    
+                    # Obtener metadata
+                    metadata = certificador.obtener_metadata_auditoria()
+                    
+                    # Mostrar QR
+                    st.markdown('<div class="qr-container">', unsafe_allow_html=True)
+                    st.image(qr_buffer, caption=f"ID Auditoria: {certificador.id_auditoria}", width=200)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Mostrar metadata
+                    st.json(metadata)
+                    
+                    # Guardar en session state para exportar
+                    st.session_state.qr_buffer = qr_buffer
+                    st.session_state.certificador = certificador
+                    st.session_state.certificado_generado = True
+                    
+                except Exception as e:
+                    st.error(f"Error al generar certificado: {str(e)}")
+    
+    with col_cert2:
+        if st.session_state.get('certificado_generado', False):
+            if st.button("Exportar PDF con Certificado", width='stretch'):
+                with st.spinner("Generando PDF certificado..."):
+                    try:
+                        # Crear archivo temporal
+                        tmp_path = tempfile.mktemp(suffix='.pdf')
+                        
+                        exportador = ExportadorAuditoria(
+                            resultado, 
+                            st.session_state.archivo_principal_nombre, 
+                            st.session_state.archivo_verificacion_nombre, 
+                            st.session_state.columna_clave_actual
+                        )
+                        certificado_texto = st.session_state.certificador.generar_certificado_texto()
+                        exportador.exportar_pdf_con_certificado(tmp_path, st.session_state.qr_buffer, certificado_texto)
+                        
+                        # Leer y descargar
+                        with open(tmp_path, 'rb') as f:
+                            pdf_data = f.read()
+                        
+                        # Eliminar archivo DESPUES de leerlo
+                        os.remove(tmp_path)
+                        
+                        # Boton de descarga
+                        st.download_button(
+                            label="Descargar PDF Certificado",
+                            data=pdf_data,
+                            file_name=f"certificado_auditoria_{st.session_state.certificador.id_auditoria}.pdf",
+                            mime="application/pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"Error al generar PDF certificado: {str(e)}")
+    
+    # Mostrar texto del certificado si se genero
+    if st.session_state.get('certificado_generado', False):
+        with st.expander("Ver texto del certificado"):
+            certificado_texto = st.session_state.certificador.generar_certificado_texto()
+            st.markdown(f'<div class="certificado-box">{certificado_texto}</div>', unsafe_allow_html=True)
+    
+    # ==================== EXPORTACION ESTANDAR ====================
+    st.markdown("---")
+    st.markdown("### Exportar Resultados (Estandar)")
     
     col_exp1, col_exp2 = st.columns(2)
     
@@ -629,7 +731,12 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
                         )
                         exportador.exportar_excel(tmp.name)
                         with open(tmp.name, 'rb') as f:
-                            st.download_button("Descargar Excel", f, "auditoria_dian.xlsx")
+                            st.download_button(
+                                label="Descargar Excel",
+                                data=f,
+                                file_name=f"auditoria_{st.session_state.archivo_principal_nombre.replace('.xlsx', '').replace('.csv', '')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.spreadsheet"
+                            )
                         os.unlink(tmp.name)
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -647,7 +754,12 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
                         )
                         exportador.exportar_pdf(tmp.name)
                         with open(tmp.name, 'rb') as f:
-                            st.download_button("Descargar PDF", f, "informe_auditoria_dian.pdf")
+                            st.download_button(
+                                label="Descargar PDF",
+                                data=f,
+                                file_name="informe_auditoria_dian.pdf",
+                                mime="application/pdf"
+                            )
                         os.unlink(tmp.name)
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -656,6 +768,6 @@ if st.session_state.comparacion_ejecutada and st.session_state.resultado is not 
 st.markdown("""
 <div class="footer">
     <p>Sistema de Auditoría de Datos | Direccion de Impuestos y Aduanas Nacionales de Colombia</p>
-    <p>Herramienta de Verificacion y Analisis Fiscal</p>
+    <p>Herramienta de Verificacion y Analisis Fiscal | Certificacion Digital con QR</p>
 </div>
 """, unsafe_allow_html=True)

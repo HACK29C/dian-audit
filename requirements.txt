@@ -1,6 +1,7 @@
-streamlit
-pandas
-openpyxl
-reportlab
-plotly
-pillow
+"streamlit" 
+"pandas" 
+"openpyxl" 
+"reportlab" 
+"plotly" 
+"pillow" 
+"qrcode[pil]" 
