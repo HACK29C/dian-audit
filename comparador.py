@@ -22,9 +22,16 @@ class ComparadorArchivos:
                 df[self.columna_clave] = df[self.columna_clave].str.upper()
     
     def _normalizar_valor(self, valor):
-        """Normaliza un valor para comparación (maneja nulos correctamente)"""
+        """Normaliza un valor para comparación (maneja nulos y formatos numéricos)"""
         if pd.isna(valor):
             return ""
+        
+        # Si es número, convertir a float y luego a string sin decimales innecesarios
+        if isinstance(valor, (int, float)):
+            if isinstance(valor, float) and valor.is_integer():
+                return str(int(valor))
+            return str(valor)
+        
         valor_str = str(valor)
         if self.ignorar_espacios:
             valor_str = valor_str.strip()
