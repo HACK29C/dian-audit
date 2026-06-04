@@ -1,0 +1,2 @@
+Que hace esta herramienta?
+El Sistema de Auditoría de Datos permite comparar dos archivos de datos (Excel o CSV) para identificar discrepancias, registros faltantes y duplicados. Es ideal para procesos de fiscalizacion, control de inventarios, verificacion de declaraciones y auditoria de datos. Seleccione una columna clave (como ID, NIT o Factura) y el sistema analizara automaticamente las diferencias.
